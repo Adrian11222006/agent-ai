@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Research Agent</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #results {
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 10px;
+        }
+        .loading {
+            display: none;
+            margin-top: 10px;
+            color: #666;
+        }
+        #status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status-error {
+            background-color: #ffe6e6;
+            color: #dc3545;
+        }
+        .status-success {
+            background-color: #e6ffe6;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Research Agent</h1>
+        <textarea id="query" placeholder="Wpisz swoje zapytanie tutaj..."></textarea>
+        <button id="searchButton" onclick="performSearch()">Szukaj</button>
+        <div id="loading" class="loading">Trwa wyszukiwanie...</div>
+        <div id="status"></div>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        const searchButton = document.getElementById('searchButton');
+        const queryInput = document.getElementById('query');
+        const resultsDiv = document.getElementById('results');
+        const loadingDiv = document.getElementById('loading');
+        const statusDiv = document.getElementById('status');
+
+        function showStatus(message, isError = false) {
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+            statusDiv.className = isError ? 'status-error' : 'status-success';
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        async function performSearch() {
+            const query = queryInput.value.trim();
+            
+            if (!query) {
+                showStatus('Proszę wpisać zapytanie.', true);
+                return;
+            }
+
+            // Wyłącz przycisk i pokaż loading
+            searchButton.disabled = true;
+            loadingDiv.style.display = 'block';
+            resultsDiv.textContent = '';
+            statusDiv.style.display = 'none';
+
+            try {
+                console.log('Wysyłanie zapytania:', query);
+                
+                const response = await fetch('/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: query })
+                });
+
+                console.log('Otrzymano odpowiedź:', response.status);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('Przetworzone dane:', data);
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Wyświetl wyniki
+                resultsDiv.textContent = JSON.stringify(data, null, 2);
+                showStatus('Wyszukiwanie zakończone pomyślnie.');
+
+            } catch (error) {
+                console.error('Błąd podczas wyszukiwania:', error);
+                showStatus(`Błąd: ${error.message}`, true);
+                resultsDiv.textContent = '';
+            } finally {
+                // Włącz z powrotem przycisk i ukryj loading
+                searchButton.disabled = false;
+                loadingDiv.style.display = 'none';
+            }
+        }
+
+        // Obsługa wciśnięcia Enter w polu tekstowym
+        queryInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                performSearch();
+            }
+        });
+    </script>
+</body>
+</html>
