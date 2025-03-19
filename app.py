@@ -1,76 +1,84 @@
-from flask import Flask, render_template, request, jsonify
-from flask_cors import CORS
+from flask import Flask, request, jsonify, render_template
 from research_agent import ResearchAgent
-import os
-from datetime import datetime
 import logging
+import sys
+import time
 
-# Konfiguracja logowania
+app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)
-
-# Konfiguracja
-CACHE_DIR = os.path.join(os.path.dirname(__file__), ".cache")
-agent = ResearchAgent(cache_dir=CACHE_DIR)
+agent = ResearchAgent()
 
 @app.route('/')
-def home():
+def index():
     return render_template('index.html')
 
 @app.route('/search', methods=['POST'])
 def search():
-    """
-    Endpoint do wykonywania wyszukiwań.
-    Oczekuje JSON z polem 'query'.
-    """
     try:
         data = request.get_json()
-        query = data.get('query', '').strip() if data else None
-        
-        logger.info(f"Otrzymano zapytanie: {query}")
+        query = data.get('query')
         
         if not query:
-            logger.warning("Otrzymano puste zapytanie")
-            return jsonify({
-                'success': False,
-                'error': 'Brak zapytania',
-                'timestamp': datetime.now().isoformat()
-            }), 400
+            return jsonify({'error': 'Brak zapytania'}), 400
 
-        logger.info("Rozpoczynam wyszukiwanie...")
-        results = agent.research(query)
-        logger.info("Wyszukiwanie zakończone")
+        start_time = time.time()
+        summary, sources = agent.process_query(query)
+        execution_time = time.time() - start_time
+
+        response = {
+            'summary': summary,
+            'sources': sources,
+            'execution_time': round(execution_time, 2)
+        }
         
-        return jsonify(results)
-        
+        return jsonify(response)
+    
     except Exception as e:
-        logger.error(f"Wystąpił błąd: {str(e)}", exc_info=True)
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
+        logger.error(f"Błąd podczas przetwarzania zapytania: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-@app.route('/health')
-def health():
-    """Endpoint do sprawdzania stanu aplikacji."""
-    return jsonify({
-        'status': 'ok',
-        'timestamp': datetime.now().isoformat()
-    })
+def run_console():
+    print("Agent Badawczy - Wersja konsolowa")
+    print("Wpisz 'exit' aby zakończyć")
+    
+    while True:
+        try:
+            query = input("\nO co chcesz się dowiedzieć? ").strip()
+            
+            if query.lower() == 'exit':
+                print("Do widzenia!")
+                break
+            
+            if not query:
+                print("Proszę wpisać zapytanie.")
+                continue
+            
+            start_time = time.time()
+            summary, sources = agent.process_query(query)
+            execution_time = time.time() - start_time
+            
+            print("\nPodsumowanie:")
+            print("-" * 80)
+            print(summary)
+            print("\nŹródła:")
+            print("-" * 80)
+            for source in sources:
+                print(f"- {source['title']}")
+                print(f"  URL: {source['url']}")
+                print(f"  {source['summary']}\n")
+            
+            print(f"Czas wykonania: {execution_time:.2f} sekund")
+            
+        except KeyboardInterrupt:
+            print("\nPrzerwano działanie. Do widzenia!")
+            break
+        except Exception as e:
+            print(f"Wystąpił błąd: {str(e)}")
 
 if __name__ == '__main__':
-    # Upewnij się, że katalog cache istnieje
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    
-    logger.info("Uruchamiam serwer Flask...")
-    
-    # Uruchom aplikację
-    app.run(
-        host='0.0.0.0',
-        port=5000,
-        debug=True
-    )
+    if len(sys.argv) > 1 and sys.argv[1] == '--console':
+        run_console()
+    else:
+        app.run(host='0.0.0.0', port=5000, debug=True)

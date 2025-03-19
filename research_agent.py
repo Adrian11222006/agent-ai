@@ -1,16 +1,15 @@
 import requests
 from bs4 import BeautifulSoup
-from googlesearch import search
 import nltk
 from nltk.tokenize import sent_tokenize
 from langdetect import detect, DetectorFactory
 import json
 import time
 from typing import List, Dict, Optional, Tuple
-from urllib.parse import urlparse, quote_plus
 import hashlib
 import os
 from datetime import datetime, timedelta
+import wikipedia
 
 class ResearchAgent:
     def __init__(self, cache_dir: str = ".cache"):
@@ -41,20 +40,9 @@ class ResearchAgent:
         # Limity
         self.max_text_length = 100000  # maksymalna długość tekstu do analizy
         self.max_retries = 3  # maksymalna liczba prób pobrania strony
-        
-    def _get_cache_path(self, url: str) -> str:
-        """Generuje ścieżkę pliku cache dla URL."""
-        url_hash = hashlib.md5(url.encode()).hexdigest()
-        return os.path.join(self.cache_dir, f"{url_hash}.json")
-        
-    def _is_cache_valid(self, cache_path: str, max_age_hours: int = 24) -> bool:
-        """Sprawdza czy cache jest wciąż aktualny."""
-        if not os.path.exists(cache_path):
-            return False
-        
-        file_time = datetime.fromtimestamp(os.path.getmtime(cache_path))
-        age = datetime.now() - file_time
-        return age < timedelta(hours=max_age_hours)
+
+        self.wikipedia = wikipedia
+        self.wikipedia.set_lang('pl')  # domyślnie polski
 
     def _rate_limit(self):
         """Implementuje ograniczenie częstotliwości zapytań."""
@@ -66,168 +54,127 @@ class ResearchAgent:
             
         self.last_request_time = time.time()
 
-    def search_web(self, query: str, num_results: int = 5) -> List[str]:
+    def search_wikipedia(self, query: str, lang: str = 'pl') -> Dict:
         """
-        Wyszukuje strony internetowe związane z zapytaniem.
-        """
-        if not query.strip():
-            raise ValueError("Zapytanie nie może być puste")
+        Wyszukuje informacje w Wikipedii.
+        
+        Args:
+            query: Zapytanie do wyszukania
+            lang: Kod języka (pl lub en)
             
-        print(f"Szukam informacji o: {query}")
-        urls = []
+        Returns:
+            Słownik z wynikami wyszukiwania
+        """
+        base_url = f"https://{lang}.wikipedia.org/w/api.php"
+        
+        # Najpierw wyszukaj strony pasujące do zapytania
+        search_params = {
+            "action": "query",
+            "format": "json",
+            "list": "search",
+            "srsearch": query,
+            "srlimit": 5,
+            "srprop": "snippet"
+        }
         
         try:
-            # Próba użycia bezpośredniego wyszukiwania Google
-            search_url = f"https://www.google.com/search?q={quote_plus(query)}&hl=pl"
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            search_response = requests.get(base_url, params=search_params)
+            search_response.raise_for_status()
+            search_data = search_response.json()
+            
+            if not search_data.get("query", {}).get("search"):
+                return {"error": "Nie znaleziono wyników"}
+                
+            # Pobierz pełną treść pierwszego artykułu
+            first_result = search_data["query"]["search"][0]
+            page_id = first_result["pageid"]
+            
+            content_params = {
+                "action": "query",
+                "format": "json",
+                "prop": "extracts|info|links",
+                "pageids": page_id,
+                "exintro": 1,
+                "explaintext": 1,
+                "inprop": "url",
+                "pllimit": "5"
             }
             
-            response = requests.get(search_url, headers=headers, timeout=10)
-            response.raise_for_status()
+            content_response = requests.get(base_url, params=content_params)
+            content_response.raise_for_status()
+            content_data = content_response.json()
             
-            soup = BeautifulSoup(response.text, 'html.parser')
-            search_results = soup.find_all('div', class_='g')
+            page_data = content_data["query"]["pages"][str(page_id)]
             
-            for result in search_results[:num_results]:
-                link = result.find('a')
-                if link and 'href' in link.attrs:
-                    url = link['href']
-                    if url.startswith('http') and not url.startswith('https://www.google.com'):
-                        urls.append(url)
-                        self._rate_limit()
+            return {
+                "title": page_data["title"],
+                "url": page_data["fullurl"],
+                "extract": page_data["extract"],
+                "links": [link["title"] for link in page_data.get("links", [])]
+            }
             
-            # Jeśli nie znaleziono wyników, użyj alternatywnej metody
-            if not urls:
-                print("Używam alternatywnej metody wyszukiwania...")
-                for url in search(query, num_results=num_results, lang="pl"):
-                    urls.append(url)
-                    self._rate_limit()
-                    
-            print(f"Znaleziono {len(urls)} źródeł")
-            return urls
-                    
         except Exception as e:
-            print(f"Błąd podczas wyszukiwania: {e}")
-            # Próba użycia alternatywnej metody
-            try:
-                print("Próbuję alternatywną metodę wyszukiwania...")
-                for url in search(query, num_results=num_results, lang="pl"):
-                    urls.append(url)
-                    self._rate_limit()
-            except Exception as e2:
-                print(f"Błąd alternatywnej metody: {e2}")
-            
-        return urls
+            print(f"Błąd podczas wyszukiwania w Wikipedii: {e}")
+            return {"error": str(e)}
 
-    def extract_content(self, url: str) -> Optional[str]:
+    def process_query(self, query):
         """
-        Pobiera i przetwarza treść ze strony internetowej.
-        
-        Args:
-            url: Adres URL strony
-            
-        Returns:
-            Przetworzony tekst ze strony lub None w przypadku błędu
+        Przetwarza zapytanie i zwraca podsumowanie oraz źródła.
         """
-        cache_path = self._get_cache_path(url)
-        
-        # Sprawdź cache
-        if self._is_cache_valid(cache_path):
-            try:
-                with open(cache_path, 'r', encoding='utf-8') as f:
-                    cached_data = json.load(f)
-                return cached_data.get('content')
-            except:
-                pass
-
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-
-        for attempt in range(self.max_retries):
-            try:
-                self._rate_limit()
-                response = requests.get(url, headers=headers, timeout=10)
-                response.raise_for_status()
-                
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Usuń niepotrzebne elementy
-                for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe']):
-                    tag.decompose()
-                
-                # Znajdź główną treść
-                main_content = soup.find('main') or soup.find('article') or soup.find('div', class_=['content', 'main', 'article'])
-                text = ' '.join((main_content or soup).stripped_strings)
-                
-                # Ogranicz długość tekstu
-                text = text[:self.max_text_length]
-                
-                # Zapisz w cache
-                with open(cache_path, 'w', encoding='utf-8') as f:
-                    json.dump({
-                        'content': text,
-                        'timestamp': datetime.now().isoformat()
-                    }, f, ensure_ascii=False)
-                
-                return text
-                
-            except Exception as e:
-                print(f"Próba {attempt + 1}/{self.max_retries} nie powiodła się dla {url}: {e}")
-                if attempt < self.max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
-                    
-        return None
-
-    def summarize_content(self, text: str, max_sentences: int = 5) -> Tuple[str, str]:
-        """
-        Tworzy podsumowanie tekstu.
-        
-        Args:
-            text: Tekst do podsumowania
-            max_sentences: Maksymalna liczba zdań w podsumowaniu
-            
-        Returns:
-            Tuple(podsumowanie, wykryty_język)
-        """
-        if not text or len(text.strip()) < 10:
-            return "Brak wystarczającej ilości tekstu do analizy.", "unknown"
-
         try:
-            # Wykryj język tekstu
-            lang = detect(text)
+            # Wyszukaj stronę na Wikipedii
+            search_results = self.wikipedia.search(query, results=3)
+            if not search_results:
+                return "Nie znaleziono informacji.", []
             
-            # Podziel na zdania z uwzględnieniem języka
-            sentences = sent_tokenize(text, language='polish' if lang == 'pl' else 'english')
+            # Weź pierwszy wynik
+            page_title = search_results[0]
+            page = self.wikipedia.page(page_title)
             
-            # Wybierz najważniejsze zdania (prosta implementacja)
-            if len(sentences) > max_sentences:
-                # Bierzemy pierwsze i ostatnie zdanie oraz kilka ze środka
-                selected = []
-                selected.append(sentences[0])  # pierwsze zdanie
+            # Przygotuj podsumowanie
+            summary = page.summary
+            
+            # Przygotuj źródła
+            sources = [{
+                'title': page.title,
+                'url': page.url,
+                'summary': summary[:200] + '...' if len(summary) > 200 else summary
+            }]
+            
+            # Dodaj powiązane strony jako dodatkowe źródła
+            for related_title in search_results[1:]:
+                try:
+                    related_page = self.wikipedia.page(related_title)
+                    sources.append({
+                        'title': related_page.title,
+                        'url': related_page.url,
+                        'summary': related_page.summary[:200] + '...' if len(related_page.summary) > 200 else related_page.summary
+                    })
+                except:
+                    continue
+            
+            return summary, sources
+            
+        except wikipedia.exceptions.DisambiguationError as e:
+            # Jeśli jest wiele możliwych stron, weź pierwszą
+            try:
+                page = self.wikipedia.page(e.options[0])
+                summary = page.summary
+                sources = [{
+                    'title': page.title,
+                    'url': page.url,
+                    'summary': summary[:200] + '...' if len(summary) > 200 else summary
+                }]
+                return summary, sources
+            except:
+                return "Znaleziono wiele możliwych odpowiedzi, ale nie udało się uzyskać szczegółowych informacji.", []
                 
-                middle_start = len(sentences) // 4
-                middle_end = 3 * len(sentences) // 4
-                middle_step = (middle_end - middle_start) // (max_sentences - 2)
-                
-                for i in range(middle_start, middle_end, middle_step):
-                    if len(selected) < max_sentences - 1:
-                        selected.append(sentences[i])
-                
-                selected.append(sentences[-1])  # ostatnie zdanie
-                return ' '.join(selected), lang
-            
-            return ' '.join(sentences), lang
-            
         except Exception as e:
-            print(f"Błąd podczas tworzenia podsumowania: {e}")
-            # Zwróć skrócony tekst jako fallback
-            return text[:500] + "...", "unknown"
+            return f"Wystąpił błąd podczas wyszukiwania: {str(e)}", []
 
     def research(self, query: str) -> Dict:
         """
-        Przeprowadza pełne badanie na podstawie zapytania.
+        Przeprowadza badanie na podstawie zapytania.
         
         Args:
             query: Zapytanie do zbadania
@@ -249,35 +196,46 @@ class ResearchAgent:
         }
 
         try:
-            # Wyszukaj źródła
-            urls = self.search_web(query)
-            if not urls:
-                results["error"] = "Nie znaleziono żadnych źródeł"
-                return results
-
-            all_content = []
-            detected_languages = []
+            # Wykryj język zapytania
+            try:
+                lang = detect(query)
+                wiki_lang = 'pl' if lang == 'pl' else 'en'
+            except:
+                wiki_lang = 'pl'  # domyślnie polski
             
-            for url in urls:
-                content = self.extract_content(url)
-                if content:
-                    summary, lang = self.summarize_content(content)
-                    results["sources"].append({
-                        "url": url,
-                        "summary": summary,
-                        "language": lang
-                    })
-                    all_content.append(summary)
-                    detected_languages.append(lang)
-
-            # Stwórz końcowe podsumowanie
-            if all_content:
-                final_summary, main_lang = self.summarize_content('\n'.join(all_content))
-                results["summary"] = final_summary
-                results["language"] = main_lang
+            # Wyszukaj w Wikipedii
+            wiki_results = self.search_wikipedia(query, wiki_lang)
+            
+            if "error" in wiki_results:
+                # Spróbuj w drugim języku jeśli pierwszy nie dał wyników
+                wiki_lang = 'en' if wiki_lang == 'pl' else 'pl'
+                wiki_results = self.search_wikipedia(query, wiki_lang)
+            
+            if "error" not in wiki_results:
+                results["summary"] = wiki_results["extract"]
+                results["sources"].append({
+                    "url": wiki_results["url"],
+                    "title": wiki_results["title"],
+                    "summary": wiki_results["extract"][:500] + "...",
+                    "language": wiki_lang
+                })
+                
+                # Dodaj powiązane artykuły jako dodatkowe źródła
+                if wiki_results.get("links"):
+                    for link_title in wiki_results["links"][:2]:  # tylko 2 powiązane artykuły
+                        link_results = self.search_wikipedia(link_title, wiki_lang)
+                        if "error" not in link_results:
+                            results["sources"].append({
+                                "url": link_results["url"],
+                                "title": link_results["title"],
+                                "summary": link_results["extract"][:300] + "...",
+                                "language": wiki_lang
+                            })
+                
                 results["success"] = True
+                results["language"] = wiki_lang
             else:
-                results["error"] = "Nie udało się pobrać treści z żadnego źródła"
+                results["error"] = "Nie znaleziono informacji w Wikipedii"
 
         except Exception as e:
             results["error"] = str(e)

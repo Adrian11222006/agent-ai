@@ -3,155 +3,273 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Research Agent</title>
+    <title>Agent Badawczy</title>
     <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1d4ed8;
+            --background-color: #f3f4f6;
+            --card-background: #ffffff;
+            --text-color: #1f2937;
+            --border-color: #e5e7eb;
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        .container {
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f5f5f5;
         }
-        .container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+        .search-card {
+            background-color: var(--card-background);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 24px;
         }
+
+        h1 {
+            color: var(--primary-color);
+            margin: 0 0 24px 0;
+            font-size: 2em;
+            text-align: center;
+        }
+
         textarea {
             width: 100%;
             height: 100px;
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            padding: 12px;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 16px;
             resize: vertical;
+            transition: border-color 0.3s;
         }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
         button {
-            background-color: #007bff;
+            background-color: var(--primary-color);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
             cursor: pointer;
             transition: background-color 0.3s;
+            width: 100%;
         }
+
         button:hover {
-            background-color: #0056b3;
+            background-color: var(--secondary-color);
         }
+
         button:disabled {
-            background-color: #cccccc;
+            background-color: var(--border-color);
             cursor: not-allowed;
         }
-        #results {
-            margin-top: 20px;
-            white-space: pre-wrap;
-        }
-        .error {
-            color: #dc3545;
-            margin-top: 10px;
-        }
+
         .loading {
             display: none;
-            margin-top: 10px;
-            color: #666;
+            text-align: center;
+            margin: 20px 0;
+            color: var(--text-color);
         }
-        #status {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 4px;
+
+        .loading-spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border-color);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .results {
+            display: none;
+            background-color: var(--card-background);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .summary {
+            margin-bottom: 24px;
+            padding: 16px;
+            background-color: var(--background-color);
+            border-radius: 8px;
+        }
+
+        .sources {
+            border-top: 2px solid var(--border-color);
+            padding-top: 16px;
+        }
+
+        .source {
+            margin-bottom: 16px;
+            padding: 16px;
+            background-color: var(--background-color);
+            border-radius: 8px;
+        }
+
+        .source-title {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .source-title:hover {
+            text-decoration: underline;
+        }
+
+        .error {
+            color: #dc2626;
+            background-color: #fee2e2;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
             display: none;
         }
-        .status-error {
-            background-color: #ffe6e6;
-            color: #dc3545;
-        }
-        .status-success {
-            background-color: #e6ffe6;
-            color: #28a745;
+
+        .execution-time {
+            text-align: right;
+            color: #6b7280;
+            font-size: 0.9em;
+            margin-top: 8px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>AI Research Agent</h1>
-        <textarea id="query" placeholder="Wpisz swoje zapytanie tutaj..."></textarea>
-        <button id="searchButton" onclick="performSearch()">Szukaj</button>
-        <div id="loading" class="loading">Trwa wyszukiwanie...</div>
-        <div id="status"></div>
-        <div id="results"></div>
+        <div class="search-card">
+            <h1>Agent Badawczy</h1>
+            <textarea id="query" placeholder="O co chcesz się dowiedzieć? (np. 'co to jest fotosynteza', 'kim był Mikołaj Kopernik')"></textarea>
+            <button id="searchButton" onclick="performSearch()">Szukaj</button>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            Szukam informacji...
+        </div>
+
+        <div id="error" class="error"></div>
+
+        <div id="results" class="results">
+            <h2>Podsumowanie</h2>
+            <div id="summary" class="summary"></div>
+
+            <h2>Źródła</h2>
+            <div id="sources" class="sources"></div>
+
+            <div id="executionTime" class="execution-time"></div>
+        </div>
     </div>
 
     <script>
         const searchButton = document.getElementById('searchButton');
         const queryInput = document.getElementById('query');
-        const resultsDiv = document.getElementById('results');
         const loadingDiv = document.getElementById('loading');
-        const statusDiv = document.getElementById('status');
+        const errorDiv = document.getElementById('error');
+        const resultsDiv = document.getElementById('results');
+        const summaryDiv = document.getElementById('summary');
+        const sourcesDiv = document.getElementById('sources');
+        const executionTimeDiv = document.getElementById('executionTime');
 
-        function showStatus(message, isError = false) {
-            statusDiv.textContent = message;
-            statusDiv.style.display = 'block';
-            statusDiv.className = isError ? 'status-error' : 'status-success';
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 5000);
+        function showError(message) {
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            resultsDiv.style.display = 'none';
+        }
+
+        function hideError() {
+            errorDiv.style.display = 'none';
+        }
+
+        function formatSource(source) {
+            return `
+                <div class="source">
+                    <a href="${source.url}" target="_blank" class="source-title">${source.title || source.url}</a>
+                    <div class="source-summary">${source.summary}</div>
+                </div>
+            `;
         }
 
         async function performSearch() {
             const query = queryInput.value.trim();
             
             if (!query) {
-                showStatus('Proszę wpisać zapytanie.', true);
+                showError('Proszę wpisać zapytanie.');
                 return;
             }
 
-            // Wyłącz przycisk i pokaż loading
+            // Reset UI
+            hideError();
             searchButton.disabled = true;
             loadingDiv.style.display = 'block';
-            resultsDiv.textContent = '';
-            statusDiv.style.display = 'none';
+            resultsDiv.style.display = 'none';
+
+            const startTime = performance.now();
 
             try {
-                console.log('Wysyłanie zapytania:', query);
-                
                 const response = await fetch('/search', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ query: query })
+                    body: JSON.stringify({ query })
                 });
 
-                console.log('Otrzymano odpowiedź:', response.status);
-
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`Błąd serwera: ${response.status}`);
                 }
 
                 const data = await response.json();
-                console.log('Przetworzone dane:', data);
 
                 if (data.error) {
                     throw new Error(data.error);
                 }
 
                 // Wyświetl wyniki
-                resultsDiv.textContent = JSON.stringify(data, null, 2);
-                showStatus('Wyszukiwanie zakończone pomyślnie.');
+                summaryDiv.textContent = data.summary;
+                sourcesDiv.innerHTML = data.sources.map(formatSource).join('');
+                resultsDiv.style.display = 'block';
+
+                // Pokaż czas wykonania
+                const executionTime = (performance.now() - startTime) / 1000;
+                executionTimeDiv.textContent = `Czas wykonania: ${executionTime.toFixed(2)} sekund`;
 
             } catch (error) {
-                console.error('Błąd podczas wyszukiwania:', error);
-                showStatus(`Błąd: ${error.message}`, true);
-                resultsDiv.textContent = '';
+                showError(`Wystąpił błąd: ${error.message}`);
             } finally {
-                // Włącz z powrotem przycisk i ukryj loading
                 searchButton.disabled = false;
                 loadingDiv.style.display = 'none';
             }
         }
 
-        // Obsługa wciśnięcia Enter w polu tekstowym
+        // Obsługa Enter w polu tekstowym
         queryInput.addEventListener('keypress', function(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
