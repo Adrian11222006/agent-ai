@@ -81,4 +81,4 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--console':
         run_console()
     else:
-        app.run(host='0.0.0.0', port=5000, debug=True)
+        app.run(host='127.0.0.1', port=5000, debug=True)
