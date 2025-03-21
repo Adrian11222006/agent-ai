@@ -10,7 +10,6 @@ import hashlib
 import os
 from datetime import datetime, timedelta
 import urllib.parse
-import wikipedia
 import concurrent.futures
 from urllib.parse import urlparse, urljoin
 
@@ -43,9 +42,6 @@ class ResearchAgent:
         # Limity
         self.max_text_length = 100000  # maksymalna długość tekstu do analizy
         self.max_retries = 3  # maksymalna liczba prób pobrania strony
-        
-        # Konfiguracja Wikipedii
-        wikipedia.set_lang('pl')
 
     def _rate_limit(self):
         """Implementacja rate limiting dla zapytań."""
@@ -59,20 +55,13 @@ class ResearchAgent:
 
     def search_web(self, query: str) -> List[Dict]:
         """
-        Wyszukuje informacje w internecie używając różnych źródeł.
+        Wyszukuje informacje w internecie używając DuckDuckGo.
         """
-        results = []
-        
         try:
-            # Wyszukiwanie w Wikipedii
-            wiki_results = self._search_wikipedia(query)
-            if wiki_results:
-                results.extend(wiki_results)
-            
             # Wyszukiwanie przez DuckDuckGo
-            ddg_results = self._search_duckduckgo(query)
-            if ddg_results:
-                results.extend(ddg_results)
+            results = self._search_duckduckgo(query)
+            if not results:
+                return []
                 
             # Usuń duplikaty na podstawie URL
             seen_urls = set()
@@ -86,33 +75,6 @@ class ResearchAgent:
             
         except Exception as e:
             print(f"Błąd podczas wyszukiwania: {e}")
-            return []
-
-    def _search_wikipedia(self, query: str) -> List[Dict]:
-        """
-        Wyszukuje informacje w Wikipedii.
-        """
-        try:
-            # Wyszukaj strony w Wikipedii
-            search_results = wikipedia.search(query, results=3)
-            results = []
-            
-            for title in search_results:
-                try:
-                    page = wikipedia.page(title, auto_suggest=False)
-                    summary = page.summary[:1000]  # Pierwsze 1000 znaków
-                    
-                    results.append({
-                        'title': page.title,
-                        'url': page.url,
-                        'summary': summary,
-                        'source': 'Wikipedia'
-                    })
-                except:
-                    continue
-                    
-            return results
-        except:
             return []
 
     def _search_duckduckgo(self, query: str) -> List[Dict]:
@@ -225,7 +187,7 @@ class ResearchAgent:
             print(f"Błąd podczas ekstrakcji treści: {e}")
             return ""
 
-    def process_query(self, query):
+    def process_query(self, query: str) -> Tuple[str, List[Dict]]:
         """
         Przetwarza zapytanie i zwraca wyniki wyszukiwania.
         """
@@ -270,7 +232,7 @@ class ResearchAgent:
             if content:
                 summary = "\n\n".join(content[:3])  # Użyj 3 pierwszych źródeł
                 summary = summary[:1500]  # Ogranicz długość podsumowania
-        else:
+            else:
                 summary = "Nie znaleziono informacji na ten temat."
             
             return summary, sources
@@ -286,28 +248,27 @@ def main():
     while True:
         try:
             query = input("\nO co chcesz się dowiedzieć? (wpisz 'exit' aby zakończyć): ").strip()
-        if query.lower() == 'exit':
-            break
+            
+            if query.lower() == 'exit':
+                break
             
             if not query:
                 print("Zapytanie nie może być puste!")
                 continue
-                
-            results = agent.process_query(query)
-        
-        print("\nWyniki badania:")
-        print("-" * 50)
-            print(f"Zapytanie: {results[0]}")
             
-            if results[1]:
-        print("\nŹródła:")
-                for source in results[1]:
-                    print(f"\n- {source['url']}")
-            print(f"  {source['summary'][:200]}...")
-            else:
-                print("\nNie znaleziono źródeł.")
-                
-        print("-" * 50)
+            summary, sources = agent.process_query(query)
+            
+            print("\nPodsumowanie:")
+            print("-" * 50)
+            print(summary)
+            
+            if sources:
+                print("\nŹródła:")
+                for source in sources:
+                    print(f"- {source['title']}")
+                    print(f"  {source['url']}")
+            
+            print("-" * 50)
             
         except KeyboardInterrupt:
             print("\nPrzerwano działanie programu.")
