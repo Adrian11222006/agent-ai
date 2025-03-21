@@ -1,35 +1,21 @@
-# Agent Badawczy AI
+# Agent AI
 
-Agent AI, który przeprowadza badania internetowe na zadany temat. Program automatycznie wyszukuje informacje w internecie, analizuje znalezione strony i tworzy podsumowanie.
-
-## Funkcje
-
-- Wyszukiwanie informacji w internecie
-- Analiza treści stron internetowych
-- Tworzenie podsumowań
-- Wykrywanie języka tekstu
-- Obsługa wielu źródeł
+Prosty agent do wyszukiwania informacji, korzystający z Wikipedii jako źródła wiedzy.
 
 ## Wymagania
-
-- Python 3.8 lub nowszy
-- Zainstalowane pakiety z pliku requirements.txt
+- Python 3.x
+- pip (menedżer pakietów Python)
 
 ## Instalacja
 
-1. Utwórz wirtualne środowisko Python:
+1. Sklonuj repozytorium:
 ```bash
-python -m venv venv
+git clone https://github.com/Adrian11222006/research-agent.git
 ```
 
-2. Aktywuj wirtualne środowisko:
-- Windows:
+2. Przejdź do katalogu projektu:
 ```bash
-venv\Scripts\activate
-```
-- Linux/Mac:
-```bash
-source venv/bin/activate
+cd research-agent
 ```
 
 3. Zainstaluj wymagane pakiety:
@@ -37,23 +23,33 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Użycie
+## Uruchomienie
 
-1. Uruchom program:
+1. Uruchom serwer:
 ```bash
-python research_agent.py
+py app.py
 ```
 
-2. Wpisz pytanie lub temat do zbadania
-3. Program automatycznie:
-   - Wyszuka informacje w internecie
-   - Przeanalizuje znalezione strony
-   - Stworzy podsumowanie
-   - Pokaże źródła informacji
+2. Otwórz przeglądarkę i wejdź na adres:
+```
+http://localhost:5000
+```
+lub
+```
+http://127.0.0.1:5000
+```
 
-## Przykłady pytań
+3. Wpisz pytanie w polu tekstowym i kliknij "Szukaj"
 
-- "Jak działa sztuczna inteligencja?"
-- "Jakie są najnowsze odkrycia w fizyce kwantowej?"
-- "Co to jest blockchain?"
-- "Jakie są skutki globalnego ocieplenia?"
+## Funkcje
+
+- Wyszukiwanie informacji w Wikipedii
+- Automatyczne podsumowania artykułów
+- Wyświetlanie powiązanych źródeł
+- Interfejs webowy
+
+## Licencja
+
+Copyright (c) 2024 Adrian11222006. All rights reserved.
+
+Ten projekt jest własnością prywatną. Kopiowanie, modyfikowanie lub rozpowszechnianie kodu bez pisemnej zgody właściciela jest zabronione.
