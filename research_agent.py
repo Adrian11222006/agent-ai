@@ -9,7 +9,10 @@ from typing import List, Dict, Optional, Tuple
 import hashlib
 import os
 from datetime import datetime, timedelta
+import urllib.parse
 import wikipedia
+import concurrent.futures
+from urllib.parse import urlparse, urljoin
 
 class ResearchAgent:
     def __init__(self, cache_dir: str = ".cache"):
@@ -40,12 +43,12 @@ class ResearchAgent:
         # Limity
         self.max_text_length = 100000  # maksymalna długość tekstu do analizy
         self.max_retries = 3  # maksymalna liczba prób pobrania strony
-
-        self.wikipedia = wikipedia
-        self.wikipedia.set_lang('pl')  # domyślnie polski
+        
+        # Konfiguracja Wikipedii
+        wikipedia.set_lang('pl')
 
     def _rate_limit(self):
-        """Implementuje ograniczenie częstotliwości zapytań."""
+        """Implementacja rate limiting dla zapytań."""
         current_time = time.time()
         time_since_last_request = current_time - self.last_request_time
         
@@ -54,194 +57,227 @@ class ResearchAgent:
             
         self.last_request_time = time.time()
 
-    def search_wikipedia(self, query: str, lang: str = 'pl') -> Dict:
+    def search_web(self, query: str) -> List[Dict]:
         """
-        Wyszukuje informacje w Wikipedii.
-        
-        Args:
-            query: Zapytanie do wyszukania
-            lang: Kod języka (pl lub en)
-            
-        Returns:
-            Słownik z wynikami wyszukiwania
+        Wyszukuje informacje w internecie używając różnych źródeł.
         """
-        base_url = f"https://{lang}.wikipedia.org/w/api.php"
-        
-        # Najpierw wyszukaj strony pasujące do zapytania
-        search_params = {
-            "action": "query",
-            "format": "json",
-            "list": "search",
-            "srsearch": query,
-            "srlimit": 5,
-            "srprop": "snippet"
-        }
+        results = []
         
         try:
-            search_response = requests.get(base_url, params=search_params)
-            search_response.raise_for_status()
-            search_data = search_response.json()
+            # Wyszukiwanie w Wikipedii
+            wiki_results = self._search_wikipedia(query)
+            if wiki_results:
+                results.extend(wiki_results)
             
-            if not search_data.get("query", {}).get("search"):
-                return {"error": "Nie znaleziono wyników"}
+            # Wyszukiwanie przez DuckDuckGo
+            ddg_results = self._search_duckduckgo(query)
+            if ddg_results:
+                results.extend(ddg_results)
                 
-            # Pobierz pełną treść pierwszego artykułu
-            first_result = search_data["query"]["search"][0]
-            page_id = first_result["pageid"]
+            # Usuń duplikaty na podstawie URL
+            seen_urls = set()
+            unique_results = []
+            for result in results:
+                if result['url'] not in seen_urls:
+                    seen_urls.add(result['url'])
+                    unique_results.append(result)
             
-            content_params = {
-                "action": "query",
-                "format": "json",
-                "prop": "extracts|info|links",
-                "pageids": page_id,
-                "exintro": 1,
-                "explaintext": 1,
-                "inprop": "url",
-                "pllimit": "5"
-            }
-            
-            content_response = requests.get(base_url, params=content_params)
-            content_response.raise_for_status()
-            content_data = content_response.json()
-            
-            page_data = content_data["query"]["pages"][str(page_id)]
-            
-            return {
-                "title": page_data["title"],
-                "url": page_data["fullurl"],
-                "extract": page_data["extract"],
-                "links": [link["title"] for link in page_data.get("links", [])]
-            }
+            return unique_results[:5]  # Limit do 5 najlepszych wyników
             
         except Exception as e:
-            print(f"Błąd podczas wyszukiwania w Wikipedii: {e}")
-            return {"error": str(e)}
+            print(f"Błąd podczas wyszukiwania: {e}")
+            return []
 
-    def process_query(self, query):
+    def _search_wikipedia(self, query: str) -> List[Dict]:
         """
-        Przetwarza zapytanie i zwraca podsumowanie oraz źródła.
+        Wyszukuje informacje w Wikipedii.
         """
         try:
-            # Wyszukaj stronę na Wikipedii
-            search_results = self.wikipedia.search(query, results=3)
-            if not search_results:
-                return "Nie znaleziono informacji.", []
+            # Wyszukaj strony w Wikipedii
+            search_results = wikipedia.search(query, results=3)
+            results = []
             
-            # Weź pierwszy wynik
-            page_title = search_results[0]
-            page = self.wikipedia.page(page_title)
-            
-            # Przygotuj podsumowanie
-            summary = page.summary
-            
-            # Przygotuj źródła
-            sources = [{
-                'title': page.title,
-                'url': page.url,
-                'summary': summary[:200] + '...' if len(summary) > 200 else summary
-            }]
-            
-            # Dodaj powiązane strony jako dodatkowe źródła
-            for related_title in search_results[1:]:
+            for title in search_results:
                 try:
-                    related_page = self.wikipedia.page(related_title)
-                    sources.append({
-                        'title': related_page.title,
-                        'url': related_page.url,
-                        'summary': related_page.summary[:200] + '...' if len(related_page.summary) > 200 else related_page.summary
+                    page = wikipedia.page(title, auto_suggest=False)
+                    summary = page.summary[:1000]  # Pierwsze 1000 znaków
+                    
+                    results.append({
+                        'title': page.title,
+                        'url': page.url,
+                        'summary': summary,
+                        'source': 'Wikipedia'
                     })
                 except:
                     continue
+                    
+            return results
+        except:
+            return []
+
+    def _search_duckduckgo(self, query: str) -> List[Dict]:
+        """
+        Wyszukuje informacje przez DuckDuckGo.
+        """
+        try:
+            self._rate_limit()
+            
+            # Przygotuj URL i parametry
+            base_url = "https://html.duckduckgo.com/html/"
+            params = {
+                'q': query,
+                'kl': 'pl-pl'  # Preferuj wyniki po polsku
+            }
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
+            }
+            
+            response = requests.post(base_url, data=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            results = []
+            
+            for result in soup.select('.result'):
+                title_elem = result.select_one('.result__title')
+                snippet_elem = result.select_one('.result__snippet')
+                url_elem = result.select_one('.result__url')
+                
+                if not all([title_elem, snippet_elem, url_elem]):
+                    continue
+                    
+                title = title_elem.get_text(strip=True)
+                snippet = snippet_elem.get_text(strip=True)
+                url = url_elem.get('href', '')
+                
+                if url and title and snippet:
+                    results.append({
+                        'title': title,
+                        'url': url,
+                        'summary': snippet,
+                        'source': 'DuckDuckGo'
+                    })
+                    
+            return results
+            
+        except Exception as e:
+            print(f"Błąd podczas wyszukiwania DuckDuckGo: {e}")
+            return []
+
+    def get_page_content(self, url: str) -> Optional[str]:
+        """
+        Pobiera treść strony internetowej.
+        """
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'pl-PL,pl;q=0.9,en-US;q=0.8,en;q=0.7'
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            # Wykryj kodowanie
+            if 'charset' in response.headers.get('content-type', '').lower():
+                response.encoding = response.apparent_encoding
+                
+            return response.text
+        except Exception as e:
+            print(f"Błąd podczas pobierania strony {url}: {e}")
+            return None
+
+    def extract_main_content(self, html: str) -> str:
+        """
+        Wydobywa główną treść ze strony HTML.
+        """
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Usuń niepotrzebne elementy
+            for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                element.decompose()
+            
+            # Znajdź główną treść
+            main_content = ""
+            
+            # Szukaj w typowych kontenerach treści
+            content_tags = soup.find_all(['article', 'main', 'div'], class_=['content', 'article', 'post'])
+            if not content_tags:
+                content_tags = soup.find_all(['p', 'article', 'section'])
+            
+            for tag in content_tags:
+                text = tag.get_text(strip=True)
+                if len(text) > 100:  # Ignoruj krótkie fragmenty
+                    main_content += text + "\n\n"
+                    if len(main_content) > self.max_text_length:
+                        break
+            
+            return main_content.strip()
+        except Exception as e:
+            print(f"Błąd podczas ekstrakcji treści: {e}")
+            return ""
+
+    def process_query(self, query):
+        """
+        Przetwarza zapytanie i zwraca wyniki wyszukiwania.
+        """
+        try:
+            # Wyszukaj informacje tylko w DuckDuckGo
+            results = self._search_duckduckgo(query)
+            
+            if not results:
+                return "Nie znaleziono informacji na ten temat.", []
+            
+            # Usuń duplikaty na podstawie URL
+            unique_results = []
+            seen_urls = set()
+            for result in results:
+                if result['url'] not in seen_urls:
+                    seen_urls.add(result['url'])
+                    unique_results.append(result)
+            
+            # Ogranicz do 5 najlepszych wyników
+            results = unique_results[:5]
+            
+            # Pobierz treść dla każdego wyniku
+            sources = []
+            content = []
+            
+            for result in results:
+                try:
+                    page_content = self.get_page_content(result['url'])
+                    if page_content:
+                        main_content = self.extract_main_content(page_content)
+                        if main_content:
+                            content.append(main_content[:1000])  # Skróć treść do 1000 znaków
+                            sources.append({
+                                'title': result['title'],
+                                'url': result['url']
+                            })
+                except Exception as e:
+                    print(f"Błąd podczas pobierania treści z {result['url']}: {str(e)}")
+                    continue
+            
+            # Przygotuj podsumowanie
+            if content:
+                summary = "\n\n".join(content[:3])  # Użyj 3 pierwszych źródeł
+                summary = summary[:1500]  # Ogranicz długość podsumowania
+        else:
+                summary = "Nie znaleziono informacji na ten temat."
             
             return summary, sources
             
-        except wikipedia.exceptions.DisambiguationError as e:
-            # Jeśli jest wiele możliwych stron, weź pierwszą
-            try:
-                page = self.wikipedia.page(e.options[0])
-                summary = page.summary
-                sources = [{
-                    'title': page.title,
-                    'url': page.url,
-                    'summary': summary[:200] + '...' if len(summary) > 200 else summary
-                }]
-                return summary, sources
-            except:
-                return "Znaleziono wiele możliwych odpowiedzi, ale nie udało się uzyskać szczegółowych informacji.", []
-                
         except Exception as e:
-            return f"Wystąpił błąd podczas wyszukiwania: {str(e)}", []
-
-    def research(self, query: str) -> Dict:
-        """
-        Przeprowadza badanie na podstawie zapytania.
-        
-        Args:
-            query: Zapytanie do zbadania
-            
-        Returns:
-            Słownik z wynikami badania
-        """
-        if not query or len(query.strip()) < 3:
-            raise ValueError("Zapytanie musi mieć co najmniej 3 znaki")
-
-        results = {
-            "query": query,
-            "sources": [],
-            "summary": "",
-            "language": "unknown",
-            "timestamp": datetime.now().isoformat(),
-            "success": False,
-            "error": None
-        }
-
-        try:
-            # Wykryj język zapytania
-            try:
-                lang = detect(query)
-                wiki_lang = 'pl' if lang == 'pl' else 'en'
-            except:
-                wiki_lang = 'pl'  # domyślnie polski
-            
-            # Wyszukaj w Wikipedii
-            wiki_results = self.search_wikipedia(query, wiki_lang)
-            
-            if "error" in wiki_results:
-                # Spróbuj w drugim języku jeśli pierwszy nie dał wyników
-                wiki_lang = 'en' if wiki_lang == 'pl' else 'pl'
-                wiki_results = self.search_wikipedia(query, wiki_lang)
-            
-            if "error" not in wiki_results:
-                results["summary"] = wiki_results["extract"]
-                results["sources"].append({
-                    "url": wiki_results["url"],
-                    "title": wiki_results["title"],
-                    "summary": wiki_results["extract"][:500] + "...",
-                    "language": wiki_lang
-                })
-                
-                # Dodaj powiązane artykuły jako dodatkowe źródła
-                if wiki_results.get("links"):
-                    for link_title in wiki_results["links"][:2]:  # tylko 2 powiązane artykuły
-                        link_results = self.search_wikipedia(link_title, wiki_lang)
-                        if "error" not in link_results:
-                            results["sources"].append({
-                                "url": link_results["url"],
-                                "title": link_results["title"],
-                                "summary": link_results["extract"][:300] + "...",
-                                "language": wiki_lang
-                            })
-                
-                results["success"] = True
-                results["language"] = wiki_lang
-            else:
-                results["error"] = "Nie znaleziono informacji w Wikipedii"
-
-        except Exception as e:
-            results["error"] = str(e)
-            print(f"Błąd podczas badania: {e}")
-
-        return results
+            print(f"Błąd podczas przetwarzania zapytania: {str(e)}")
+            return "Wystąpił błąd podczas wyszukiwania.", []
 
 def main():
     """Funkcja główna do testowania agenta."""
@@ -250,31 +286,28 @@ def main():
     while True:
         try:
             query = input("\nO co chcesz się dowiedzieć? (wpisz 'exit' aby zakończyć): ").strip()
-            if query.lower() == 'exit':
-                break
-                
+        if query.lower() == 'exit':
+            break
+            
             if not query:
                 print("Zapytanie nie może być puste!")
                 continue
                 
-            results = agent.research(query)
+            results = agent.process_query(query)
+        
+        print("\nWyniki badania:")
+        print("-" * 50)
+            print(f"Zapytanie: {results[0]}")
             
-            print("\nWyniki badania:")
-            print("-" * 50)
-            print(f"Zapytanie: {results['query']}")
-            
-            if results['success']:
-                print(f"\nPodsumowanie (język: {results['language']}):")
-                print(results['summary'])
-                print("\nŹródła:")
-                for source in results['sources']:
+            if results[1]:
+        print("\nŹródła:")
+                for source in results[1]:
                     print(f"\n- {source['url']}")
-                    print(f"  Język: {source['language']}")
-                    print(f"  {source['summary'][:200]}...")
+            print(f"  {source['summary'][:200]}...")
             else:
-                print(f"\nBłąd: {results['error']}")
+                print("\nNie znaleziono źródeł.")
                 
-            print("-" * 50)
+        print("-" * 50)
             
         except KeyboardInterrupt:
             print("\nPrzerwano działanie programu.")

@@ -1,55 +1,73 @@
-# Agent AI
+# Research Agent
 
-Prosty agent do wyszukiwania informacji, korzystający z Wikipedii jako źródła wiedzy.
+Asystent badawczy oparty na wyszukiwaniu w internecie, który pomaga znaleźć i podsumować informacje na zadany temat.
+
+## Funkcje
+
+- Wyszukiwanie informacji w internecie za pomocą DuckDuckGo
+- Automatyczne podsumowywanie znalezionych treści
+- Interfejs webowy do interakcji z agentem
+- Obsługa języka polskiego
+- Inteligentne przetwarzanie treści stron internetowych
 
 ## Wymagania
-- Python 3.x
-- pip (menedżer pakietów Python)
+
+- Python 3.8+
+- Flask
+- BeautifulSoup4
+- Requests
+- Pozostałe zależności w pliku `requirements.txt`
 
 ## Instalacja
 
 1. Sklonuj repozytorium:
 ```bash
-git clone https://github.com/Adrian11222006/research-agent.git
-```
-
-2. Przejdź do katalogu projektu:
-```bash
+git clone https://github.com/twoja-nazwa/research-agent.git
 cd research-agent
 ```
 
-3. Zainstaluj wymagane pakiety:
+2. Zainstaluj zależności:
 ```bash
 pip install -r requirements.txt
 ```
 
 ## Uruchomienie
 
-1. Uruchom serwer:
+1. Uruchom serwer Flask:
 ```bash
-py app.py
+python app.py
 ```
 
-2. Otwórz przeglądarkę i wejdź na adres:
+2. Otwórz przeglądarkę i przejdź pod adres:
 ```
 http://localhost:5000
 ```
-lub
-```
-http://127.0.0.1:5000
-```
 
-3. Wpisz pytanie w polu tekstowym i kliknij "Szukaj"
+## Użycie
 
-## Funkcje
+1. Wpisz pytanie w pole wyszukiwania
+2. Kliknij przycisk "Szukaj"
+3. Poczekaj na wyniki - agent przeszuka internet i przedstawi podsumowanie znalezionych informacji
 
-- Wyszukiwanie informacji w Wikipedii
-- Automatyczne podsumowania artykułów
-- Wyświetlanie powiązanych źródeł
-- Interfejs webowy
+## Struktura projektu
+
+- `app.py` - główna aplikacja Flask
+- `research_agent.py` - logika wyszukiwania i przetwarzania informacji
+- `templates/` - szablony HTML
+- `static/` - pliki statyczne (CSS, JavaScript)
+- `logs/` - logi aplikacji
 
 ## Licencja
 
-Copyright (c) 2024 Adrian11222006. All rights reserved.
+MIT License
 
-Ten projekt jest własnością prywatną. Kopiowanie, modyfikowanie lub rozpowszechnianie kodu bez pisemnej zgody właściciela jest zabronione.
+## Autor
+
+Adrian11222006
+
+## Podziękowania
+
+- BeautifulSoup4 za parsowanie HTML
+- NLTK za przetwarzanie tekstu
+- Flask za serwer web
+- Requests za obsługę HTTP

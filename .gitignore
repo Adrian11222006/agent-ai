@@ -22,9 +22,8 @@ wheels/
 
 # Virtual Environment
 venv/
-ENV/
 env/
-.env
+ENV/
 
 # IDE
 .idea/
@@ -32,8 +31,18 @@ env/
 *.swp
 *.swo
 
+# Logs
+logs/
+*.log
+
 # Cache
 .cache/
+.pytest_cache/
 
-# Logs
-*.log 
+# Environment variables
+.env
+.env.*
+
+# System
+.DS_Store
+Thumbs.db 

@@ -1,43 +1,82 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, render_template, request, jsonify
 from research_agent import ResearchAgent
-import logging
-import sys
 import time
+import logging
+from logging.handlers import RotatingFileHandler
+import os
+import sys
 
+# Konfiguracja loggera
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+handler = RotatingFileHandler('logs/app.log', maxBytes=10000, backupCount=3)
+handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+))
+handler.setLevel(logging.INFO)
+
+# Inicjalizacja aplikacji
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+app.logger.addHandler(handler)
+app.logger.setLevel(logging.INFO)
+app.logger.info('Research Agent startup')
 
+# Inicjalizacja agenta
 agent = ResearchAgent()
 
 @app.route('/')
 def index():
+    """Strona główna."""
     return render_template('index.html')
 
 @app.route('/search', methods=['POST'])
 def search():
+    """
+    Endpoint do wyszukiwania.
+    Przyjmuje zapytanie w formacie JSON i zwraca wyniki wyszukiwania.
+    """
     try:
+        # Pobierz zapytanie z JSON
         data = request.get_json()
-        query = data.get('query')
+        if not data or 'query' not in data:
+            return jsonify({
+                'error': 'Brak zapytania w żądaniu',
+                'execution_time': 0
+            }), 400
+            
+        query = data['query'].strip()
         
         if not query:
-            return jsonify({'error': 'Brak zapytania'}), 400
-
+            return jsonify({
+                'error': 'Zapytanie nie może być puste',
+                'execution_time': 0
+            }), 400
+            
+        # Zmierz czas wykonania
         start_time = time.time()
+        
+        # Wykonaj wyszukiwanie
         summary, sources = agent.process_query(query)
-        execution_time = time.time() - start_time
-
-        response = {
+        
+        # Oblicz czas wykonania
+        execution_time = round(time.time() - start_time, 2)
+        
+        app.logger.info(f'Successful search for query: "{query}" in {execution_time}s')
+        
+        return jsonify({
             'summary': summary,
             'sources': sources,
-            'execution_time': round(execution_time, 2)
-        }
+            'execution_time': execution_time
+        })
         
-        return jsonify(response)
-    
     except Exception as e:
-        logger.error(f"Błąd podczas przetwarzania zapytania: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f'Error during search: {str(e)}')
+        return jsonify({
+            'error': 'Wystąpił błąd podczas wyszukiwania',
+            'details': str(e),
+            'execution_time': 0
+        }), 500
 
 def run_console():
     print("Agent Badawczy - Wersja konsolowa")
@@ -81,4 +120,8 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--console':
         run_console()
     else:
-        app.run(host='127.0.0.1', port=5000, debug=True)
+        app.run(
+            host='127.0.0.1',  # localhost
+            port=5000,
+            debug=True
+        )
