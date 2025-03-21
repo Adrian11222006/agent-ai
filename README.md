@@ -1,32 +1,32 @@
-# Research Agent
+# Agent AI
 
-Asystent badawczy oparty na wyszukiwaniu w internecie, który pomaga znaleźć i podsumować informacje na zadany temat.
+Inteligentny agent do wyszukiwania i analizowania informacji z internetu.
 
 ## Funkcje
 
 - Wyszukiwanie informacji w internecie za pomocą DuckDuckGo
 - Automatyczne podsumowywanie znalezionych treści
-- Interfejs webowy do interakcji z agentem
-- Obsługa języka polskiego
-- Inteligentne przetwarzanie treści stron internetowych
+- Wyświetlanie źródeł z linkami
+- Prosty i przejrzysty interfejs webowy
 
 ## Wymagania
 
-- Python 3.8+
-- Flask
-- BeautifulSoup4
-- Requests
-- Pozostałe zależności w pliku `requirements.txt`
+* Python 3.8 lub nowszy
+* pip (menedżer pakietów Python)
 
 ## Instalacja
 
 1. Sklonuj repozytorium:
 ```bash
-git clone https://github.com/twoja-nazwa/research-agent.git
-cd research-agent
+git clone https://github.com/Adrian11222006/agent-ai.git
 ```
 
-2. Zainstaluj zależności:
+2. Przejdź do katalogu projektu:
+```bash
+cd agent-ai
+```
+
+3. Zainstaluj wymagane pakiety:
 ```bash
 pip install -r requirements.txt
 ```
@@ -43,23 +43,13 @@ python app.py
 http://localhost:5000
 ```
 
-## Użycie
-
-1. Wpisz pytanie w pole wyszukiwania
-2. Kliknij przycisk "Szukaj"
-3. Poczekaj na wyniki - agent przeszuka internet i przedstawi podsumowanie znalezionych informacji
-
-## Struktura projektu
-
-- `app.py` - główna aplikacja Flask
-- `research_agent.py` - logika wyszukiwania i przetwarzania informacji
-- `templates/` - szablony HTML
-- `static/` - pliki statyczne (CSS, JavaScript)
-- `logs/` - logi aplikacji
+3. Wpisz pytanie w pole wyszukiwania i kliknij "Szukaj"
 
 ## Licencja
 
-MIT License
+Copyright (c) 2024 Adrian11222006. All rights reserved.
+
+Ten projekt jest własnością prywatną. Kopiowanie, modyfikowanie lub rozpowszechnianie kodu bez pisemnej zgody właściciela jest zabronione.
 
 ## Autor
 
